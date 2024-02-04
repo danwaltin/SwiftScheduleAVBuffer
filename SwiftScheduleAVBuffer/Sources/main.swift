@@ -56,7 +56,7 @@ func export(sourceFileURL: URL, outputURL: URL) async throws {
 	try engine.start()
 	player.play()
 
-	let renderLength = 10
+	let renderLength = 5
 	let numberOfSegmentsToRender = 3
 	let startSecond: TimeInterval = 0
 	let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.fileFormat.settings)
@@ -119,13 +119,7 @@ extension AVAudioFile {
 		let frameCount = AVAudioFrameCount(end - start)
 		self.framePosition = start
 
-		return try audioBuffer(frameCount: frameCount)
-	}
-
-	private func audioBuffer(frameCount: AVAudioFrameCount) throws -> AVAudioPCMBuffer {
-		let format = self.processingFormat
-
-		guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+		guard let buffer = AVAudioPCMBuffer(pcmFormat: processingFormat, frameCapacity: frameCount) else {
 			throw AudioFileBufferError.couldNotCreateAudioBuffer(url: url)
 		}
 
