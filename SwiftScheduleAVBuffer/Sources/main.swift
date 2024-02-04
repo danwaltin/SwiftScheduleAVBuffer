@@ -49,40 +49,61 @@ func export(sourceFileURL: URL, outputURL: URL) async throws {
 
 	// The maximum number of frames the engine renders in any single render call.
 	let maxFrames: AVAudioFrameCount = 4096
-	try engine.enableManualRenderingMode(.offline, format: format,
+	try engine.enableManualRenderingMode(.offline, 
+										 format: format,
 										 maximumFrameCount: maxFrames)
 
 	try engine.start()
 	player.play()
 
-	let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: 0, toSeconds: 10)
-	let maxFramePositionToRender = AVAudioFramePosition(sourceBuffer.frameLength)
-	player.scheduleBuffer(sourceBuffer, completionCallbackType: .dataRendered, completionHandler: nil)
-
-	let outputBuffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
-								  frameCapacity: engine.manualRenderingMaximumFrameCount)!
-
-
+	let renderLength = 10
+	let numberOfSegmentsToRender = 3
+	let startSecond: TimeInterval = 0
 	let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.fileFormat.settings)
 
-	while engine.manualRenderingSampleTime < maxFramePositionToRender {
-		let frameCount = maxFramePositionToRender - engine.manualRenderingSampleTime
-		let framesToRender = min(AVAudioFrameCount(frameCount), outputBuffer.frameCapacity)
+	for i in 0..<numberOfSegmentsToRender {
+		let fromSeconds = startSecond + TimeInterval(i * renderLength)
+		let toSeconds = fromSeconds + TimeInterval(renderLength)
 		
-		let status = try engine.renderOffline(framesToRender, to: outputBuffer)
+		let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: fromSeconds, toSeconds: toSeconds)
+		player.scheduleBuffer(sourceBuffer, at: nil, completionHandler: nil)
+		
+		
+		try render(engine: engine, 
+				   to: outputFile,
+				   secondsToRender: toSeconds - fromSeconds,
+				   sampleRate: sourceFile.fileFormat.sampleRate)
+	}
+	player.stop()
+	engine.stop()
+}
+
+func render(engine: AVAudioEngine,
+			to outputFile: AVAudioFile,
+			secondsToRender: TimeInterval,
+			sampleRate: Double) throws {
+
+	let buffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
+								  frameCapacity: engine.manualRenderingMaximumFrameCount)!
+
+	let totalFramesToRender = secondsToRender * sampleRate
+
+	let maxFrames = engine.manualRenderingSampleTime + AVAudioFramePosition(totalFramesToRender)
+	while engine.manualRenderingSampleTime < maxFrames  {
+		let frameCount = maxFrames - engine.manualRenderingSampleTime
+		let framesToRender = min(AVAudioFrameCount(frameCount), buffer.frameCapacity)
+		
+		let status = try engine.renderOffline(framesToRender, to: buffer)
 		
 		switch status {
 			
 		case .success:
-			try outputFile.write(from: outputBuffer)
-
+			try outputFile.write(from: buffer)
+			
 		default:
 			print("status: \(status)")
 		}
 	}
-
-	player.stop()
-	engine.stop()
 }
 
 enum AudioFileBufferError: Error {
