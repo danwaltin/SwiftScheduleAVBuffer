@@ -10,7 +10,7 @@ guard let sourceFileURL = Bundle.module.url(forResource: "Rhythm", withExtension
 }
 
 do {
-	try export(sourceFileURL: sourceFileURL)
+	try await export(sourceFileURL: sourceFileURL)
 } catch {
 	print("Failed to export: \(error.localizedDescription)")
 }
@@ -19,7 +19,7 @@ print("Goodbye")
 	
 // MARK: - Helpers
 
-func export(sourceFileURL: URL) throws {
+func export(sourceFileURL: URL) async throws {
 	let sourceFile = try AVAudioFile(forReading: sourceFileURL)
 	let format = sourceFile.processingFormat
 
@@ -49,14 +49,11 @@ func export(sourceFileURL: URL) throws {
 	//maxFramePositionToRender = sourceFile.length
 	//player.scheduleFile(sourceFile, at: nil, completionCallbackType: .dataRendered)
 
-	do {
-		let buffer = try sourceFile.audioBuffer(fromSeconds: 2, toSeconds: 10)
-		maxFramePositionToRender = AVAudioFramePosition(buffer.frameLength)
-		
-		player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed)
-	} catch {
-		fatalError("failed to get buffer: \(error).")
-	}
+	let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: 2, toSeconds: 10)
+	maxFramePositionToRender = AVAudioFramePosition(sourceBuffer.frameLength)
+	
+	// func scheduleBuffer(_ buffer: AVAudioPCMBuffer, completionCallbackType callbackType: AVAudioPlayerNodeCompletionCallbackType) async -> AVAudioPlayerNodeCompletionCallbackType
+	player.scheduleBuffer(sourceBuffer, completionCallbackType: .dataRendered, completionHandler: nil)
 
 	// The maximum number of frames the engine renders in any single render call.
 	let maxFrames: AVAudioFrameCount = 4096
@@ -66,8 +63,7 @@ func export(sourceFileURL: URL) throws {
 	try engine.start()
 	player.play()
 
-	// The output buffer to which the engine renders the processed data.
-	let buffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
+	let outputBuffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
 								  frameCapacity: engine.manualRenderingMaximumFrameCount)!
 
 
@@ -78,14 +74,14 @@ func export(sourceFileURL: URL) throws {
 
 	while engine.manualRenderingSampleTime < maxFramePositionToRender {
 		let frameCount = maxFramePositionToRender - engine.manualRenderingSampleTime
-		let framesToRender = min(AVAudioFrameCount(frameCount), buffer.frameCapacity)
+		let framesToRender = min(AVAudioFrameCount(frameCount), outputBuffer.frameCapacity)
 		
-		let status = try engine.renderOffline(framesToRender, to: buffer)
+		let status = try engine.renderOffline(framesToRender, to: outputBuffer)
 		
 		switch status {
 			
 		case .success:
-			try outputFile.write(from: buffer)
+			try outputFile.write(from: outputBuffer)
 
 		default:
 			print("status: \(status)")
