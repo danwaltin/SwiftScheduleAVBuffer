@@ -9,8 +9,12 @@ guard let sourceFileURL = Bundle.module.url(forResource: "Rhythm", withExtension
 	exit(1)
 }
 
+let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+let outputURL = documentsURL.appendingPathComponent("Rhythm-processed2.caf")
+print("\(outputURL)")
+
 do {
-	try await export(sourceFileURL: sourceFileURL)
+	try await export(sourceFileURL: sourceFileURL, outputURL: outputURL)
 } catch {
 	print("Failed to export: \(error.localizedDescription)")
 }
@@ -19,7 +23,7 @@ print("Goodbye")
 	
 // MARK: - Helpers
 
-func export(sourceFileURL: URL) async throws {
+func export(sourceFileURL: URL, outputURL: URL) async throws {
 	let sourceFile = try AVAudioFile(forReading: sourceFileURL)
 	let format = sourceFile.processingFormat
 
@@ -41,19 +45,7 @@ func export(sourceFileURL: URL) async throws {
 	engine.connect(player, to: reverb, format: format)
 	engine.connect(reverb, to: engine.mainMixerNode, format: format)
 
-
-	// Schedule the source file.
-
-	var maxFramePositionToRender: AVAudioFramePosition = 0
-
-	//maxFramePositionToRender = sourceFile.length
-	//player.scheduleFile(sourceFile, at: nil, completionCallbackType: .dataRendered)
-
-	let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: 2, toSeconds: 10)
-	maxFramePositionToRender = AVAudioFramePosition(sourceBuffer.frameLength)
 	
-	// func scheduleBuffer(_ buffer: AVAudioPCMBuffer, completionCallbackType callbackType: AVAudioPlayerNodeCompletionCallbackType) async -> AVAudioPlayerNodeCompletionCallbackType
-	player.scheduleBuffer(sourceBuffer, completionCallbackType: .dataRendered, completionHandler: nil)
 
 	// The maximum number of frames the engine renders in any single render call.
 	let maxFrames: AVAudioFrameCount = 4096
@@ -63,13 +55,14 @@ func export(sourceFileURL: URL) async throws {
 	try engine.start()
 	player.play()
 
+	let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: 0, toSeconds: 10)
+	let maxFramePositionToRender = AVAudioFramePosition(sourceBuffer.frameLength)
+	player.scheduleBuffer(sourceBuffer, completionCallbackType: .dataRendered, completionHandler: nil)
+
 	let outputBuffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
 								  frameCapacity: engine.manualRenderingMaximumFrameCount)!
 
 
-	let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-	let outputURL = documentsURL.appendingPathComponent("Rhythm-processed.caf")
-	print("\(outputURL)")
 	let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.fileFormat.settings)
 
 	while engine.manualRenderingSampleTime < maxFramePositionToRender {
