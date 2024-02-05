@@ -11,6 +11,8 @@ let package = Package(
         .executableTarget(
             name: "SwiftScheduleAVBuffer",
 			resources: [
-				.process("Rhythm.caf")]),
+				.process("Rhythm.caf"),
+				.process("dancing.mp3"),
+				.process("bjekker.m4a")]),
     ]
 )
