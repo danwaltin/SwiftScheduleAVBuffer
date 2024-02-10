@@ -18,11 +18,11 @@ let apa = try AVAudioFile(forReading: bjekkerSourceFileURL)
 let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
 do {
-	try await export(sourceFileURL: bjekkerSourceFileURL,
-					 toDestinationURL: documentsURL,
-					 destinationFilename: "bjekker-unchanged.m4a",
-					 destinationFileExtension: "m4a",
-					 playerFunc: Player.withNoChange)
+//	try await export(sourceFileURL: bjekkerSourceFileURL,
+//					 toDestinationURL: documentsURL,
+//					 destinationFilename: "bjekker-unchanged",
+//					 destinationFileExtension: "m4a",
+//					 playerFunc: Player.withNoChange)
 
 	try await export(sourceFileURL: bjekkerSourceFileURL,
 					 toDestinationURL: documentsURL,
@@ -61,7 +61,7 @@ func export(sourceFileURL: URL,
 	player.play()
 
 	let renderLength = 5
-	let numberOfSegmentsToRender = 3
+	let numberOfSegmentsToRender = 2
 	let startSecond: TimeInterval = 0
 
 	var segmentURLs = [URL]()
@@ -69,7 +69,7 @@ func export(sourceFileURL: URL,
 	for i in 0..<numberOfSegmentsToRender {
 		let outputURL = destinationURL.appendingPathComponent(destinationFilename + "_\(i)").appendingPathExtension(destinationFileExtension)
 		segmentURLs.append(outputURL)
-		let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.fileFormat.settings)
+		var outputFile:AVAudioFile? = try AVAudioFile(forWriting: outputURL, settings: sourceFile.processingFormat.settings)
 
 		let fromSeconds = startSecond + TimeInterval(i * renderLength)
 		let toSeconds = fromSeconds + TimeInterval(renderLength)
@@ -79,12 +79,20 @@ func export(sourceFileURL: URL,
 		
 
 		try render(engine: engine,
-				   to: outputFile,
+				   to: outputFile!,
 				   secondsToRender: toSeconds - fromSeconds,
 				   sampleRate: sourceFile.fileFormat.sampleRate)
+		outputFile = nil
 	}
 	player.stop()
 	engine.stop()
+	
+	try await AudioComposer().concatenateAudioFiles(
+		urls: segmentURLs,
+		format: format,
+		to: destinationURL,
+		filename: destinationFilename,
+		fileExtension: destinationFileExtension)
 }
 
 
