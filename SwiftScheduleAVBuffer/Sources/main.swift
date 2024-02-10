@@ -14,38 +14,22 @@ guard let rhythmSourceFileURL = Bundle.module.url(forResource: "Rhythm", withExt
 	exit(1)
 }
 
+let apa = try AVAudioFile(forReading: bjekkerSourceFileURL)
 let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
 do {
 	try await export(sourceFileURL: bjekkerSourceFileURL,
 					 toDestinationURL: documentsURL,
 					 destinationFilename: "bjekker-unchanged.m4a",
-					 playerFunc: playerWithNoChange)
+					 destinationFileExtension: "m4a",
+					 playerFunc: Player.withNoChange)
 
 	try await export(sourceFileURL: bjekkerSourceFileURL,
 					 toDestinationURL: documentsURL,
-					 destinationFilename: "bjekker-rateChanged.m4a",
-					 playerFunc: playerWithRateChange)
+					 destinationFilename: "bjekker-rateChanged",
+					 destinationFileExtension: "m4a",
+					 playerFunc: Player.withRateChange)
 	
-	try await export(sourceFileURL: bjekkerSourceFileURL,
-					 toDestinationURL: documentsURL,
-					 destinationFilename: "bjekker-withReverb.m4a",
-					 playerFunc: playerWithReverb)
-	
-	try await export(sourceFileURL: rhythmSourceFileURL,
-					 toDestinationURL: documentsURL,
-					 destinationFilename: "rhythm-unchanged.caf",
-					 playerFunc: playerWithNoChange)
-
-	try await export(sourceFileURL: rhythmSourceFileURL,
-					 toDestinationURL: documentsURL,
-					 destinationFilename: "rhythm-rateChanged.caf",
-					 playerFunc: playerWithRateChange)
-	
-	try await export(sourceFileURL: rhythmSourceFileURL,
-					 toDestinationURL: documentsURL,
-					 destinationFilename: "rhythm-withReverb.caf",
-					 playerFunc: playerWithReverb)
 } catch {
 	print("Failed to export: \(error.localizedDescription)")
 }
@@ -54,53 +38,11 @@ print("Goodbye")
 	
 // MARK: - Helpers
 
-func playerWithNoChange(format: AVAudioFormat) -> (engine: AVAudioEngine, player: AVAudioPlayerNode) {
-	let engine = AVAudioEngine()
-	let player = AVAudioPlayerNode()
-
-	engine.attach(player)
-
-	engine.connect(player, to: engine.mainMixerNode, format: format)
-
-	return (engine, player)
-}
-
-func playerWithReverb(format: AVAudioFormat) -> (engine: AVAudioEngine, player: AVAudioPlayerNode) {
-	let engine = AVAudioEngine()
-	let player = AVAudioPlayerNode()
-	let reverb = AVAudioUnitReverb()
-
-	engine.attach(player)
-	engine.attach(reverb)
-
-	reverb.loadFactoryPreset(.mediumHall)
-	reverb.wetDryMix = 50
-
-	engine.connect(player, to: reverb, format: format)
-	engine.connect(reverb, to: engine.mainMixerNode, format: format)
-
-	return (engine, player)
-}
-
-func playerWithRateChange(format: AVAudioFormat) -> (engine: AVAudioEngine, player: AVAudioPlayerNode) {
-	let engine = AVAudioEngine()
-	let player = AVAudioPlayerNode()
-	let rate = AVAudioUnitTimePitch()
-
-	engine.attach(player)
-	engine.attach(rate)
-
-	rate.rate = 1
-
-	engine.connect(player, to: rate, format: format)
-	engine.connect(rate, to: engine.mainMixerNode, format: format)
-
-	return (engine, player)
-}
 
 func export(sourceFileURL: URL,
 			toDestinationURL destinationURL: URL,
 			destinationFilename: String,
+			destinationFileExtension: String,
 			playerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode)) async throws {
 
 	let sourceFile = try AVAudioFile(forReading: sourceFileURL)
@@ -122,18 +64,21 @@ func export(sourceFileURL: URL,
 	let numberOfSegmentsToRender = 3
 	let startSecond: TimeInterval = 0
 
-	let outputURL = destinationURL.appendingPathComponent(destinationFilename)
-	let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.fileFormat.settings)
-
+	var segmentURLs = [URL]()
+	
 	for i in 0..<numberOfSegmentsToRender {
+		let outputURL = destinationURL.appendingPathComponent(destinationFilename + "_\(i)").appendingPathExtension(destinationFileExtension)
+		segmentURLs.append(outputURL)
+		let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.fileFormat.settings)
+
 		let fromSeconds = startSecond + TimeInterval(i * renderLength)
 		let toSeconds = fromSeconds + TimeInterval(renderLength)
 		
 		let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: fromSeconds, toSeconds: toSeconds)
 		player.scheduleBuffer(sourceBuffer, at: nil, completionHandler: nil)
 		
-		
-		try render(engine: engine, 
+
+		try render(engine: engine,
 				   to: outputFile,
 				   secondsToRender: toSeconds - fromSeconds,
 				   sampleRate: sourceFile.fileFormat.sampleRate)
@@ -142,18 +87,19 @@ func export(sourceFileURL: URL,
 	engine.stop()
 }
 
+
 func render(engine: AVAudioEngine,
 			to outputFile: AVAudioFile,
 			secondsToRender: TimeInterval,
 			sampleRate: Double) throws {
 
-	let buffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
-								  frameCapacity: engine.manualRenderingMaximumFrameCount)!
-
 	let totalFramesToRender = secondsToRender * sampleRate
 
 	let maxFrames = engine.manualRenderingSampleTime + AVAudioFramePosition(totalFramesToRender)
 	while engine.manualRenderingSampleTime < maxFrames  {
+		let buffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
+									  frameCapacity: engine.manualRenderingMaximumFrameCount)!
+
 		let frameCount = maxFrames - engine.manualRenderingSampleTime
 		let framesToRender = min(AVAudioFrameCount(frameCount), buffer.frameCapacity)
 		
@@ -162,7 +108,7 @@ func render(engine: AVAudioEngine,
 		switch status {
 			
 		case .success:
-			try outputFile.write(from: buffer)
+				try outputFile.write(from: buffer)
 			
 		default:
 			print("status: \(status)")
