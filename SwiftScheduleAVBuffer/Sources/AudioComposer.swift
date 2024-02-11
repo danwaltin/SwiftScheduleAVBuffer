@@ -113,23 +113,21 @@ class AudioComposer {
 		let duration = try await exporter.estimatedMaximumDuration
 
 		print("output duration: \(duration)")
-		await withCheckedContinuation { continuation in
-			
-			exporter.exportAsynchronously {
-				switch exporter.status {
-				case .completed:
-					print("export completed")
-				case .failed:
-					print("export failed, status: \(exporter.status.rawValue)")
-					print("export failed, error: \(String(describing: exporter.error))")
-				case .cancelled:
-					print("export cancelled")
-				default:
-					print("export default case: \(exporter.status)")
-				}
-				continuation.resume()
-			}
-		}
+		await exporter.export()
+//		exporter.exportAsynchronously {
+//			switch exporter.status {
+//			case .completed:
+//				print("export completed")
+//			case .failed:
+//				print("export failed, status: \(exporter.status.rawValue)")
+//				print("export failed, error: \(String(describing: exporter.error))")
+//			case .cancelled:
+//				print("export cancelled")
+//			default:
+//				print("export default case: \(exporter.status)")
+//			}
+//		}
+//		try await Task.sleep(nanoseconds: 10_000_000_000)
 	}
 }
 

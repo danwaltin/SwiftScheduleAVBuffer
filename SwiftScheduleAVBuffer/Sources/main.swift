@@ -14,22 +14,36 @@ guard let rhythmSourceFileURL = Bundle.module.url(forResource: "Rhythm", withExt
 	exit(1)
 }
 
+guard let bjekker_0_URL = Bundle.module.url(forResource: "bjekker-rateChanged_0", withExtension: "m4a") else {
+	print("could not load bjekker 0 source file")
+	exit(1)
+}
+
+guard let bjekker_1_URL = Bundle.module.url(forResource: "bjekker-rateChanged_1", withExtension: "m4a") else {
+	print("could not load bjekker 1 source file")
+	exit(1)
+}
+
 let apa = try AVAudioFile(forReading: bjekkerSourceFileURL)
 let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+let destinationURL = documentsURL.appendingPathComponent("AudioExport")
 
+let composer = AudioComposer()
 do {
 //	try await export(sourceFileURL: bjekkerSourceFileURL,
-//					 toDestinationURL: documentsURL,
+//					 toDestinationURL: destinationURL,
 //					 destinationFilename: "bjekker-unchanged",
 //					 destinationFileExtension: "m4a",
 //					 playerFunc: Player.withNoChange)
 
-	try await export(sourceFileURL: bjekkerSourceFileURL,
-					 toDestinationURL: documentsURL,
-					 destinationFilename: "bjekker-rateChanged",
-					 destinationFileExtension: "m4a",
-					 playerFunc: Player.withRateChange)
+//	try await export(sourceFileURL: bjekkerSourceFileURL,
+//					 toDestinationURL: destinationURL,
+//					 destinationFilename: "bjekker-rateChanged",
+//					 destinationFileExtension: "m4a",
+//					 playerFunc: Player.withRateChange)
 	
+	let outputURL = destinationURL.appendingPathComponent("bjekker-rateChanged").appendingPathExtension("m4a")
+	try await composer.combineAudioFiles(audioFileURL1: bjekker_0_URL, audioFileURL2: bjekker_1_URL, outputFileURL: outputURL)
 } catch {
 	print("Failed to export: \(error.localizedDescription)")
 }

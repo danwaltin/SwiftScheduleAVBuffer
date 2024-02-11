@@ -15,6 +15,9 @@ let package = Package(
             name: "SwiftScheduleAVBuffer",
 			resources: [
 				.process("Rhythm.caf"),
-				.process("bjekker.m4a")]),
+				.process("bjekker.m4a"),
+				.process("bjekker-rateChanged_0.m4a"),
+				.process("bjekker-rateChanged_1.m4a")]),
     ]
 )
+
