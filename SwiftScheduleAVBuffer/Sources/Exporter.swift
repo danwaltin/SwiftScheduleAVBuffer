@@ -10,6 +10,9 @@ import AVFoundation
 
 class Exporter {
 
+	private let segmentLength: Double = 10
+	private let numberOfSegments = 4
+	
 	func exportToSegments(sourceFileURL: URL,
 						  toDestinationURL destinationURL: URL,
 						  destinationFilename: String,
@@ -31,19 +34,18 @@ class Exporter {
 		try engine.start()
 		player.play()
 
-		let renderLength = 5
-		let numberOfSegmentsToRender = 2
 		let startSecond: TimeInterval = 0
 
 		var segmentURLs = [URL]()
 		
-		for i in 0..<numberOfSegmentsToRender {
+		for i in 0..<numberOfSegments {
 			let outputURL = destinationURL.appendingPathComponent(destinationFilename + "_\(i)").appendingPathExtension(destinationFileExtension)
 			segmentURLs.append(outputURL)
-			var outputFile:AVAudioFile? = try AVAudioFile(forWriting: outputURL, settings: sourceFile.processingFormat.settings)
+			
+			var outputFile: AVAudioFile? = try AVAudioFile(forWriting: outputURL, settings: sourceFile.processingFormat.settings)
 
-			let fromSeconds = startSecond + TimeInterval(i * renderLength)
-			let toSeconds = fromSeconds + TimeInterval(renderLength)
+			let fromSeconds = startSecond + TimeInterval(Double(i) * segmentLength)
+			let toSeconds = fromSeconds + TimeInterval(segmentLength)
 			
 			let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: fromSeconds, toSeconds: toSeconds)
 			player.scheduleBuffer(sourceBuffer, at: nil, completionHandler: nil)
@@ -53,6 +55,7 @@ class Exporter {
 					   to: outputFile!,
 					   secondsToRender: toSeconds - fromSeconds,
 					   sampleRate: sourceFile.fileFormat.sampleRate)
+			
 			outputFile = nil
 		}
 		player.stop()
@@ -64,7 +67,7 @@ class Exporter {
 	func combine(sourceUrls: [URL], outputFileURL: URL) async throws {
 		let composition = AVMutableComposition()
 		
-		let options: [String: Any] = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+		let options: [String: Any] = [:]
 			
 		var startTime: CMTime = .zero
 		for (index, url) in sourceUrls.enumerated() {
@@ -74,7 +77,7 @@ class Exporter {
 				return
 			}
 
-			let duration = try await asset.load(.duration)
+			let duration = CMTime(seconds: segmentLength, preferredTimescale: startTime.timescale)
 			let assetTrack = try await asset.loadTracks(withMediaType: .audio)[0]
 
 			do {
@@ -87,12 +90,12 @@ class Exporter {
 		}
 
 		guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else {
+			print("failed to create session")
 			return
 		}
 		
 		session.outputFileType = AVFileType.m4a
 		session.outputURL = outputFileURL
-		let duration = try await session.estimatedMaximumDuration
 
 		await session.export()
 	}

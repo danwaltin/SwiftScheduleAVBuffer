@@ -19,7 +19,7 @@ let exporter = Exporter()
 
 let exports: [(name: String, plyerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode))] = [
 	("bjekker-unchanged", Player.withNoChange),
-	("bjekker-rateChanged", Player.withRateChange)
+	//("bjekker-rateChanged", Player.withRateChange)
 ]
 
 do {
