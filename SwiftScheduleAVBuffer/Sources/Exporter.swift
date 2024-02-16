@@ -10,69 +10,93 @@ import AVFoundation
 
 class Exporter {
 
-	func exportWithManualRendering(sourceTrackURL: URL) async throws -> URL {
-		let sourceFile = try AVAudioFile(forReading: sourceTrackURL)
-		let format = sourceFile.processingFormat
-		let (engine,player) = Player.withNoChange(format: format)
+	func exportToSegments(sourceFileURL: URL,
+						  toDestinationURL destinationURL: URL,
+						  destinationFilename: String,
+						  destinationFileExtension: String,
+						  playerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode)) async throws -> [URL]{
 
-		let outputURL = try getTempWorkingDirectory()
-			.appendingPathComponent(sourceTrackURL.lastPathComponent)
-		let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.fileFormat.settings)
-		
+		let sourceFile = try AVAudioFile(forReading: sourceFileURL)
+		let format = sourceFile.processingFormat
+
+		let (engine,player) = playerFunc(format)
+
+
+		// The maximum number of frames the engine renders in any single render call.
 		let maxFrames: AVAudioFrameCount = 4096
 		try engine.enableManualRenderingMode(.offline,
 											 format: format,
 											 maximumFrameCount: maxFrames)
 
-		
-		let segmentLength: TimeInterval = 5
-		let numberOfSegments = 2
-		let startTime: TimeInterval = 0
-		
 		try engine.start()
 		player.play()
 
-		for segmentIndex in 0..<numberOfSegments {
-			let fromSeconds = startTime + Double(segmentIndex) * segmentLength
-			let toSeconds = fromSeconds + segmentLength
-			
-			let buffer = try sourceFile.audioBuffer(fromSeconds: fromSeconds, toSeconds: toSeconds)
-			
-			player.scheduleBuffer(buffer, at: nil, completionHandler: nil)
-			
-			try render(engine: engine, to: outputFile, secondsToRender: segmentLength, sampleRate: sourceFile.processingFormat.sampleRate)
-		}
+		let renderLength = 5
+		let numberOfSegmentsToRender = 2
+		let startSecond: TimeInterval = 0
 
+		var segmentURLs = [URL]()
+		
+		for i in 0..<numberOfSegmentsToRender {
+			let outputURL = destinationURL.appendingPathComponent(destinationFilename + "_\(i)").appendingPathExtension(destinationFileExtension)
+			segmentURLs.append(outputURL)
+			var outputFile:AVAudioFile? = try AVAudioFile(forWriting: outputURL, settings: sourceFile.processingFormat.settings)
+
+			let fromSeconds = startSecond + TimeInterval(i * renderLength)
+			let toSeconds = fromSeconds + TimeInterval(renderLength)
+			
+			let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: fromSeconds, toSeconds: toSeconds)
+			player.scheduleBuffer(sourceBuffer, at: nil, completionHandler: nil)
+			
+
+			try render(engine: engine,
+					   to: outputFile!,
+					   secondsToRender: toSeconds - fromSeconds,
+					   sampleRate: sourceFile.fileFormat.sampleRate)
+			outputFile = nil
+		}
 		player.stop()
 		engine.stop()
 		
-		return outputURL
+		return segmentURLs
 	}
-	
-	func splitWithExportSession(trackToSplitURL: URL) async throws -> [URL] {
-		return [trackToSplitURL]
-	}
-	
-	func combineWithExportSession(trackUrlsToCombine: [URL],
-								  destinationPathURL: URL) async throws {
-		
-	}
-	
-	// MARK: -
-	private func getTempWorkingDirectory() throws -> URL {
-		let temp = tempWorkingDirectory
-		try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
 
-		return temp
+	func combine(sourceUrls: [URL], outputFileURL: URL) async throws {
+		let composition = AVMutableComposition()
+		
+		let options: [String: Any] = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+			
+		var startTime: CMTime = .zero
+		for (index, url) in sourceUrls.enumerated() {
+			let asset = AVURLAsset(url: url, options: options)
+			guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+				print("Failed to add track at index \(index)")
+				return
+			}
+
+			let duration = try await asset.load(.duration)
+			let assetTrack = try await asset.loadTracks(withMediaType: .audio)[0]
+
+			do {
+				try track.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: assetTrack, at: startTime)
+			} catch {
+				print("Failed to insert time range at index \(index), error: \(error)")
+				return
+			}
+			startTime = .init(seconds: startTime.seconds + duration.seconds, preferredTimescale: startTime.timescale)
+		}
+
+		guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else {
+			return
+		}
+		
+		session.outputFileType = AVFileType.m4a
+		session.outputURL = outputFileURL
+		let duration = try await session.estimatedMaximumDuration
+
+		await session.export()
 	}
 	
-	private lazy var tempWorkingDirectory: URL = {
-		FileManager
-			.default
-			.temporaryDirectory
-			.appendingPathComponent("AudioExporter")
-			.appendingPathComponent(UUID().uuidString)
-	}()
 	
 	private func render(engine: AVAudioEngine,
 						to outputFile: AVAudioFile,
@@ -101,5 +125,4 @@ class Exporter {
 			}
 		}
 	}
-
 }

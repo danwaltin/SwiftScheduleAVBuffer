@@ -18,7 +18,6 @@ extension AVAudioFile {
 		let start = AVAudioFramePosition(fromSeconds * sampleRate)
 		let end = AVAudioFramePosition(toSeconds * sampleRate)
 
-		print("audioBuffer from: \(start) to: \(end)")
 		let frameCount = AVAudioFrameCount(end - start)
 		self.framePosition = start
 
@@ -28,7 +27,6 @@ extension AVAudioFile {
 
 		try self.read(into: buffer, frameCount: frameCount)
 
-		print("buffer frameLength: \(buffer.frameLength), frameCapacity: \(buffer.frameCapacity)")
 		return buffer
 	}
 }
