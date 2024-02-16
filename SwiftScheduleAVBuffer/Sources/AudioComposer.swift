@@ -18,10 +18,10 @@ class AudioComposer {
 			.appendingPathComponent(filename)
 			.appendingPathExtension(fileExtension)
 		let outputFile = try AVAudioFile(forWriting: outputURL, settings: format.settings)
-		
-		try await combineAudioFiles(audioFileURL1: urls[0], audioFileURL2: urls[1], outputFileURL: outputURL)
-		
-		return
+//		
+//		try await combineAudioFiles(audioFileURL1: urls[0], audioFileURL2: urls[1], outputFileURL: outputURL)
+//		
+//		return
 		let options: [String: Any] = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
 		
 		let (engine,player) = Player.withNoChange(format: format)

@@ -14,36 +14,43 @@ guard let rhythmSourceFileURL = Bundle.module.url(forResource: "Rhythm", withExt
 	exit(1)
 }
 
-guard let bjekker_0_URL = Bundle.module.url(forResource: "bjekker-rateChanged_0", withExtension: "m4a") else {
+guard let bjekker_0_URL = Bundle.module.url(forResource: "bjekker-unchanged_0", withExtension: "m4a") else {
 	print("could not load bjekker 0 source file")
 	exit(1)
 }
 
-guard let bjekker_1_URL = Bundle.module.url(forResource: "bjekker-rateChanged_1", withExtension: "m4a") else {
+guard let bjekker_1_URL = Bundle.module.url(forResource: "bjekker-unchanged_1", withExtension: "m4a") else {
 	print("could not load bjekker 1 source file")
 	exit(1)
 }
 
-let apa = try AVAudioFile(forReading: bjekkerSourceFileURL)
-let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-let destinationURL = documentsURL.appendingPathComponent("AudioExport")
+let destinationURL = try getDestinationURL()
+let outputURL = destinationURL.appendingPathComponent("bjekker-combined").appendingPathExtension("m4a")
 
 let composer = AudioComposer()
-do {
-//	try await export(sourceFileURL: bjekkerSourceFileURL,
-//					 toDestinationURL: destinationURL,
-//					 destinationFilename: "bjekker-unchanged",
-//					 destinationFileExtension: "m4a",
-//					 playerFunc: Player.withNoChange)
 
-//	try await export(sourceFileURL: bjekkerSourceFileURL,
-//					 toDestinationURL: destinationURL,
-//					 destinationFilename: "bjekker-rateChanged",
-//					 destinationFileExtension: "m4a",
-//					 playerFunc: Player.withRateChange)
+do {
+//	try await composer.combineAudioFiles(audioFileURL1: bjekker_0_URL, audioFileURL2: bjekker_1_URL, outputFileURL: outputURL)
+		try await export(sourceFileURL: bjekkerSourceFileURL,
+						 toDestinationURL: destinationURL,
+						 destinationFilename: "bjekker-unchanged",
+						 destinationFileExtension: "m4a",
+						 playerFunc: Player.withNoChange)
 	
-	let outputURL = destinationURL.appendingPathComponent("bjekker-rateChanged").appendingPathExtension("m4a")
-	try await composer.combineAudioFiles(audioFileURL1: bjekker_0_URL, audioFileURL2: bjekker_1_URL, outputFileURL: outputURL)
+		try await export(sourceFileURL: bjekkerSourceFileURL,
+						 toDestinationURL: destinationURL,
+						 destinationFilename: "bjekker-rateChanged",
+						 destinationFileExtension: "m4a",
+						 playerFunc: Player.withRateChange)
+	
+//	let exporter = Exporter()
+//	let exportedURL = try await exporter.exportWithManualRendering(sourceTrackURL: bjekkerSourceFileURL)
+//	print(exportedURL)
+//	let splitURLs = try await exporter.splitWithExportSession(trackToSplitURL: exportedURL)
+//	print(splitURLs)
+//	let outputURL = destinationURL.appendingPathComponent("bjekker-rateChanged").appendingPathExtension("m4a")
+//	try await exporter.combineWithExportSession(trackUrlsToCombine: splitURLs, destinationPathURL: outputURL)
+	
 } catch {
 	print("Failed to export: \(error.localizedDescription)")
 }
@@ -52,6 +59,14 @@ print("Goodbye")
 	
 // MARK: - Helpers
 
+private func getDestinationURL() throws -> URL {
+	let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+	let destinationURL = documentsURL.appendingPathComponent("AudioExport")
+
+	try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+	
+	return destinationURL
+}
 
 func export(sourceFileURL: URL,
 			toDestinationURL destinationURL: URL,
@@ -138,25 +153,3 @@ func render(engine: AVAudioEngine,
 	}
 }
 
-enum AudioFileBufferError: Error {
-	case couldNotCreateAudioBuffer(url: URL)
-}
-
-extension AVAudioFile {
-	func audioBuffer(fromSeconds: TimeInterval, toSeconds: TimeInterval) throws -> AVAudioPCMBuffer {
-		let sampleRate = processingFormat.sampleRate
-		let start = AVAudioFramePosition(fromSeconds * sampleRate)
-		let end = AVAudioFramePosition(toSeconds * sampleRate)
-
-		let frameCount = AVAudioFrameCount(end - start)
-		self.framePosition = start
-
-		guard let buffer = AVAudioPCMBuffer(pcmFormat: processingFormat, frameCapacity: frameCount) else {
-			throw AudioFileBufferError.couldNotCreateAudioBuffer(url: url)
-		}
-
-		try self.read(into: buffer, frameCount: frameCount)
-
-		return buffer
-	}
-}

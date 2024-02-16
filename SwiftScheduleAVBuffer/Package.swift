@@ -17,7 +17,9 @@ let package = Package(
 				.process("Rhythm.caf"),
 				.process("bjekker.m4a"),
 				.process("bjekker-rateChanged_0.m4a"),
-				.process("bjekker-rateChanged_1.m4a")]),
+				.process("bjekker-rateChanged_1.m4a"),
+				.process("bjekker-unchanged_0.m4a"),
+				.process("bjekker-unchanged_1.m4a")]),
     ]
 )
 
