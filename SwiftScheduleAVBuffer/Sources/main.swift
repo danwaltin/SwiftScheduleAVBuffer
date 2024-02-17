@@ -17,21 +17,43 @@ guard let rhythmSourceFileURL = Bundle.module.url(forResource: "Rhythm", withExt
 let destinationURL = try getDestinationURL()
 let exporter = Exporter()
 
-let exports: [(name: String, plyerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode))] = [
+let exports: [(name: String, playerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode))] = [
 	//("bjekker-unchanged", Player.withNoChange),
 	("bjekker-rateChanged", Player.withRateChange)
 ]
 
 do {
+	let ext = "m4a"
+	let segmentLength: Double = 10
+	let numberOfSegments = 6
 	for export in exports {
 		let urls = try await exporter.exportToSegments(sourceFileURL: bjekkerSourceFileURL,
 													   toDestinationURL: destinationURL,
 													   destinationFilename: export.name,
-													   destinationFileExtension: "m4a",
-													   playerFunc: export.plyerFunc)
-		try await exporter.concatenate(sourceUrls: urls, outputFileURL: destinationURL.appending(path: export.name).appendingPathExtension("m4a"))
-//		try await exporter.combine(sourceUrls: urls,
-//								   outputFileURL: destinationURL.appending(path: export.name).appendingPathExtension("m4a"))
+													   destinationFileExtension: ext,
+													   segmentLength: segmentLength,
+													   numberOfSegments: numberOfSegments,
+													   playerFunc: export.playerFunc)
+//		let urls = try await exporter.export(sourceFileURL: bjekkerSourceFileURL,
+//											 toDestinationURL: destinationURL,
+//											 destinationFilename: export.name,
+//											 destinationFileExtension: ext,
+//											 exportInterval: (fromSeconds: 0, toSeconds: 30),
+//											 playerFunc: export.playerFunc)
+		for url in urls {
+			let segmentUrl = url
+				.deletingLastPathComponent()
+				.appending(path: "segment-" + url.lastPathComponent)
+			try await exporter.combine(
+				sourceUrls: [url],
+				outputFileURL: segmentUrl,
+				segmentLength: segmentLength)
+		}
+		
+		try await exporter.combine(
+			sourceUrls: urls,
+			outputFileURL: destinationURL.appending(path: export.name + "-combined").appendingPathExtension(ext),
+			segmentLength: segmentLength)
 	}
 } catch {
 	print("Failed to export: \(error.localizedDescription)")

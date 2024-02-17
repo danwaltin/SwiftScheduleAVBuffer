@@ -10,35 +10,86 @@ import AVFoundation
 
 class Exporter {
 
-	private let segmentLength: Double = 10
-	private let numberOfSegments = 4
-	
+	func export(sourceFileURL: URL,
+				toDestinationURL destinationURL: URL,
+				destinationFilename: String,
+				destinationFileExtension: String,
+				exportInterval: (fromSeconds: TimeInterval, toSeconds: TimeInterval),
+				playerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode)) async throws -> [URL]{
+
+		let segmentLength: TimeInterval = 5
+		
+		let sourceFile = try AVAudioFile(forReading: sourceFileURL)
+		let format = sourceFile.processingFormat
+
+		var segmentStartTime = exportInterval.fromSeconds
+		
+		var segmentURLs = [URL]()
+		var segmentIndex = 0
+		while segmentStartTime < exportInterval.toSeconds {
+			let segmentEndTime = min(segmentStartTime + segmentLength, exportInterval.toSeconds)
+			let (engine,player) = playerFunc(format)
+
+			let outputURL = destinationURL.appendingPathComponent(destinationFilename + "_\(segmentIndex)").appendingPathExtension(destinationFileExtension)
+			segmentURLs.append(outputURL)
+			
+			let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.processingFormat.settings)
+
+			let maxFrames: AVAudioFrameCount = 1024
+			try engine.enableManualRenderingMode(.offline,
+												 format: format,
+												 maximumFrameCount: maxFrames)
+
+			try engine.start()
+			player.play()
+
+			let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: segmentStartTime, toSeconds: segmentEndTime)
+			player.scheduleBuffer(sourceBuffer, at: nil, completionHandler: nil)
+			
+			//sourceBuffer.
+			try render(engine: engine,
+					   to: outputFile,
+					   secondsToRender: segmentEndTime - segmentStartTime,
+					   sampleRate: sourceFile.fileFormat.sampleRate)
+
+			player.stop()
+			engine.stop()
+
+			segmentStartTime = segmentEndTime
+			segmentIndex += 1
+		}
+		
+		
+		return segmentURLs
+	}
+
 	func exportToSegments(sourceFileURL: URL,
 						  toDestinationURL destinationURL: URL,
 						  destinationFilename: String,
 						  destinationFileExtension: String,
+						  segmentLength: Double,
+						  numberOfSegments: Int,
 						  playerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode)) async throws -> [URL]{
 
 		let sourceFile = try AVAudioFile(forReading: sourceFileURL)
 		let format = sourceFile.processingFormat
 
-		let (engine,player) = playerFunc(format)
-
-
-		// The maximum number of frames the engine renders in any single render call.
-		let maxFrames: AVAudioFrameCount = 4096
-		try engine.enableManualRenderingMode(.offline,
-											 format: format,
-											 maximumFrameCount: maxFrames)
-
-		try engine.start()
-		player.play()
-
-		let startSecond: TimeInterval = 5
 
 		var segmentURLs = [URL]()
+
+		let startSecond: TimeInterval = 0
+
 		
 		for i in 0..<numberOfSegments {
+			let (engine,player) = playerFunc(format)
+
+			let maxFrames: AVAudioFrameCount = 128
+			try engine.enableManualRenderingMode(.offline,
+												 format: format,
+												 maximumFrameCount: maxFrames)
+
+			try engine.start()
+			player.play()
 			let outputURL = destinationURL.appendingPathComponent(destinationFilename + "_\(i)").appendingPathExtension(destinationFileExtension)
 			segmentURLs.append(outputURL)
 			
@@ -50,14 +101,13 @@ class Exporter {
 			let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: fromSeconds, toSeconds: toSeconds)
 			player.scheduleBuffer(sourceBuffer, at: nil, completionHandler: nil)
 			
-
 			try render(engine: engine,
 					   to: outputFile,
 					   secondsToRender: toSeconds - fromSeconds,
 					   sampleRate: sourceFile.fileFormat.sampleRate)
+			player.stop()
+			engine.stop()
 		}
-		player.stop()
-		engine.stop()
 		
 		return segmentURLs
 	}
@@ -113,7 +163,7 @@ class Exporter {
 		var audioFile = try AVAudioFile(forReading: url)
 		return audioFile.processingFormat
 	}
-	func combine(sourceUrls: [URL], outputFileURL: URL) async throws {
+	func combine(sourceUrls: [URL], outputFileURL: URL, segmentLength: Double) async throws {
 		let composition = AVMutableComposition()
 		
 		let options: [String: Any] = [:]
