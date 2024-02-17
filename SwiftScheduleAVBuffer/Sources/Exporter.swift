@@ -34,7 +34,7 @@ class Exporter {
 		try engine.start()
 		player.play()
 
-		let startSecond: TimeInterval = 0
+		let startSecond: TimeInterval = 5
 
 		var segmentURLs = [URL]()
 		
@@ -42,7 +42,7 @@ class Exporter {
 			let outputURL = destinationURL.appendingPathComponent(destinationFilename + "_\(i)").appendingPathExtension(destinationFileExtension)
 			segmentURLs.append(outputURL)
 			
-			var outputFile: AVAudioFile? = try AVAudioFile(forWriting: outputURL, settings: sourceFile.processingFormat.settings)
+			let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.processingFormat.settings)
 
 			let fromSeconds = startSecond + TimeInterval(Double(i) * segmentLength)
 			let toSeconds = fromSeconds + TimeInterval(segmentLength)
@@ -52,11 +52,9 @@ class Exporter {
 			
 
 			try render(engine: engine,
-					   to: outputFile!,
+					   to: outputFile,
 					   secondsToRender: toSeconds - fromSeconds,
 					   sampleRate: sourceFile.fileFormat.sampleRate)
-			
-			outputFile = nil
 		}
 		player.stop()
 		engine.stop()
@@ -64,6 +62,57 @@ class Exporter {
 		return segmentURLs
 	}
 
+	func concatenate(sourceUrls: [URL], outputFileURL: URL) async throws {
+		guard let first = sourceUrls.first else {
+			print("no files to concatenate")
+			return
+		}
+
+		let format = try format(atUrl: first)
+		let (engine,player) = Player.withNoChange(format: format)
+
+		let maxFrames: AVAudioFrameCount = 4096
+		try engine.enableManualRenderingMode(.offline,
+											 format: format,
+											 maximumFrameCount: maxFrames)
+
+		try engine.start()
+		player.play()
+
+		let outputFile = try AVAudioFile(forWriting: outputFileURL, settings: format.settings)
+		for url in sourceUrls {
+			let sourceFile = try AVAudioFile(forReading: url)
+			player.scheduleFile(sourceFile, at: nil, completionHandler: nil)
+			
+			let maxFrames = engine.manualRenderingSampleTime + AVAudioFramePosition(sourceFile.length)
+			while engine.manualRenderingSampleTime < maxFrames  {
+				let buffer = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
+											  frameCapacity: engine.manualRenderingMaximumFrameCount)!
+
+				let frameCount = maxFrames - engine.manualRenderingSampleTime
+				let framesToRender = min(AVAudioFrameCount(frameCount), buffer.frameCapacity)
+				
+				let status = try engine.renderOffline(framesToRender, to: buffer)
+				
+				switch status {
+					
+				case .success:
+						try outputFile.write(from: buffer)
+					
+				default:
+					print("status: \(status)")
+				}
+			}
+
+		}
+		player.stop()
+		engine.stop()
+	}
+
+	private func format(atUrl url: URL) throws -> AVAudioFormat {
+		var audioFile = try AVAudioFile(forReading: url)
+		return audioFile.processingFormat
+	}
 	func combine(sourceUrls: [URL], outputFileURL: URL) async throws {
 		let composition = AVMutableComposition()
 		
