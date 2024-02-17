@@ -8,59 +8,64 @@
 import Foundation
 import AVFoundation
 
+struct VolumeMarker {
+	let time:TimeInterval
+	let volume: Float
+}
+
+struct VolumeSegment {
+	let start: VolumeMarker
+	let end: VolumeMarker
+}
+
 class Exporter {
 
+	
 	func export(sourceFileURL: URL,
 				toDestinationURL destinationURL: URL,
-				destinationFilename: String,
-				destinationFileExtension: String,
-				exportInterval: (fromSeconds: TimeInterval, toSeconds: TimeInterval),
-				playerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAudioPlayerNode)) async throws -> [URL]{
+				volumeSegments: [VolumeSegment]) async throws {
 
-		let segmentLength: TimeInterval = 5
+		let asset = AVAsset(url: sourceFileURL)
 		
-		let sourceFile = try AVAudioFile(forReading: sourceFileURL)
-		let format = sourceFile.processingFormat
+		guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+			print("Could not create export session")
+			return
+		}
 
-		var segmentStartTime = exportInterval.fromSeconds
+		session.outputURL = destinationURL
+		session.outputFileType = .m4a
 		
-		var segmentURLs = [URL]()
-		var segmentIndex = 0
-		while segmentStartTime < exportInterval.toSeconds {
-			let segmentEndTime = min(segmentStartTime + segmentLength, exportInterval.toSeconds)
-			let (engine,player) = playerFunc(format)
-
-			let outputURL = destinationURL.appendingPathComponent(destinationFilename + "_\(segmentIndex)").appendingPathExtension(destinationFileExtension)
-			segmentURLs.append(outputURL)
-			
-			let outputFile = try AVAudioFile(forWriting: outputURL, settings: sourceFile.processingFormat.settings)
-
-			let maxFrames: AVAudioFrameCount = 1024
-			try engine.enableManualRenderingMode(.offline,
-												 format: format,
-												 maximumFrameCount: maxFrames)
-
-			try engine.start()
-			player.play()
-
-			let sourceBuffer = try sourceFile.audioBuffer(fromSeconds: segmentStartTime, toSeconds: segmentEndTime)
-			player.scheduleBuffer(sourceBuffer, at: nil, completionHandler: nil)
-			
-			//sourceBuffer.
-			try render(engine: engine,
-					   to: outputFile,
-					   secondsToRender: segmentEndTime - segmentStartTime,
-					   sampleRate: sourceFile.fileFormat.sampleRate)
-
-			player.stop()
-			engine.stop()
-
-			segmentStartTime = segmentEndTime
-			segmentIndex += 1
+		let audioMix = AVMutableAudioMix()
+		guard let audioTrack = try await asset.loadTracks(withMediaType: .audio).first else {
+			print("Could not load audio track")
+			return
 		}
 		
+		let mixInputParameters = AVMutableAudioMixInputParameters(track: audioTrack)
 		
-		return segmentURLs
+		let timeZero = CMTime.zero
+		for volume in volumeSegments {
+			let volumeStartTime = CMTime(seconds: volume.start.time, preferredTimescale: timeZero.timescale)
+			let volumeEndTime = CMTime(seconds: volume.end.time, preferredTimescale: timeZero.timescale)
+			
+			mixInputParameters.setVolumeRamp(
+				fromStartVolume: volume.start.volume,
+				toEndVolume: volume.end.volume,
+				timeRange: CMTimeRange(start: volumeStartTime, end: volumeEndTime))
+		}
+
+		
+		audioMix.inputParameters = [mixInputParameters]
+		
+		session.audioMix = audioMix
+		
+		//await session.export()
+		
+		let playerItem = AVPlayerItem(asset: asset)
+		playerItem.audioMix = audioMix
+		
+		let player = AVPlayer()
+		player.play()
 	}
 
 	func exportToSegments(sourceFileURL: URL,
@@ -160,7 +165,7 @@ class Exporter {
 	}
 
 	private func format(atUrl url: URL) throws -> AVAudioFormat {
-		var audioFile = try AVAudioFile(forReading: url)
+		let audioFile = try AVAudioFile(forReading: url)
 		return audioFile.processingFormat
 	}
 	func combine(sourceUrls: [URL], outputFileURL: URL, segmentLength: Double) async throws {
@@ -176,6 +181,7 @@ class Exporter {
 				return
 			}
 
+			
 			let duration = CMTime(seconds: segmentLength, preferredTimescale: startTime.timescale)
 			let assetTrack = try await asset.loadTracks(withMediaType: .audio)[0]
 

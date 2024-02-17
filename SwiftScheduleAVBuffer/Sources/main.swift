@@ -24,37 +24,19 @@ let exports: [(name: String, playerFunc: (AVAudioFormat) -> (AVAudioEngine, AVAu
 
 do {
 	let ext = "m4a"
-	let segmentLength: Double = 10
-	let numberOfSegments = 6
-	for export in exports {
-		let urls = try await exporter.exportToSegments(sourceFileURL: bjekkerSourceFileURL,
-													   toDestinationURL: destinationURL,
-													   destinationFilename: export.name,
-													   destinationFileExtension: ext,
-													   segmentLength: segmentLength,
-													   numberOfSegments: numberOfSegments,
-													   playerFunc: export.playerFunc)
-//		let urls = try await exporter.export(sourceFileURL: bjekkerSourceFileURL,
-//											 toDestinationURL: destinationURL,
-//											 destinationFilename: export.name,
-//											 destinationFileExtension: ext,
-//											 exportInterval: (fromSeconds: 0, toSeconds: 30),
-//											 playerFunc: export.playerFunc)
-		for url in urls {
-			let segmentUrl = url
-				.deletingLastPathComponent()
-				.appending(path: "segment-" + url.lastPathComponent)
-			try await exporter.combine(
-				sourceUrls: [url],
-				outputFileURL: segmentUrl,
-				segmentLength: segmentLength)
-		}
-		
-		try await exporter.combine(
-			sourceUrls: urls,
-			outputFileURL: destinationURL.appending(path: export.name + "-combined").appendingPathExtension(ext),
-			segmentLength: segmentLength)
-	}
+	
+	try await exporter.export(
+		sourceFileURL: bjekkerSourceFileURL,
+		toDestinationURL: destinationURL.appending(path: "bjekker-mixed").appendingPathExtension(ext),
+		volumeSegments: [
+			VolumeSegment(start: VolumeMarker(time: 0, volume: 0),
+						  end:	 VolumeMarker(time: 20, volume: 1)),
+			VolumeSegment(start: VolumeMarker(time: 20, volume: 1),
+						  end:	 VolumeMarker(time: 30, volume: 0.1)),
+			VolumeSegment(start: VolumeMarker(time: 30, volume: 0.1),
+						  end:	 VolumeMarker(time: 50, volume: 1)),
+		])
+	
 } catch {
 	print("Failed to export: \(error.localizedDescription)")
 }
